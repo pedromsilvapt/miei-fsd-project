@@ -12,6 +12,6 @@ public class TransactionReport {
     }
 
     public String toString () {
-        return String.format( "TransactionReport( id = %u, state = %s )", this.id, this.state.toString() );
+        return String.format( "TransactionReport( id = %d, state = %s )", this.id, this.state.toString() );
     }
 }
