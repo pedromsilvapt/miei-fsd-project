@@ -47,6 +47,15 @@ public class CoordinatorController {
             }
         }, this.executorService );
 
+
+        this.channel.registerHandler( "create-transaction", ( o, m ) -> {
+            TransactionRequest request = this.serializer.decode( m );
+
+            Transaction tr = this.coordinator.onTransactionBegin( request.getServersArray() );
+
+            return CompletableFuture.completedFuture( this.serializer.encode( tr.id ) );
+        } );
+
         return this.coordinator.start()
                 .thenCompose( m -> this.channel.start() )
                 .thenApply( a -> {
