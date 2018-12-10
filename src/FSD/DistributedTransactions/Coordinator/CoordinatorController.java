@@ -2,11 +2,14 @@ package FSD.DistributedTransactions.Coordinator;
 
 import FSD.DistributedTransactions.TransactionReport;
 import FSD.DistributedTransactions.TransactionRequest;
+import FSD.DistributedTransactions.TransactionState;
+import FSD.Logger;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -24,11 +27,14 @@ public class CoordinatorController {
     public CoordinatorController ( Address address, Coordinator coordinator ) {
         this.coordinator = coordinator;
 
+        this.coordinator.setTransactionListener( this::onTransactionChange );
+
         this.address = address;
 
         this.serializer = Serializer.builder()
                 .withTypes( ArrayList.class )
                 .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
                 .build();
 
         this.executorService = Executors.newSingleThreadExecutor();
@@ -36,6 +42,16 @@ public class CoordinatorController {
         this.channel = NettyMessagingService.builder()
                 .withAddress( this.address )
                 .build();
+    }
+
+    public void onTransactionChange ( Transaction tr ) {
+        TransactionReport report = new TransactionReport( tr.id, tr.globalState );
+
+        byte[] data = this.serializer.encode( report );
+
+        for ( int index : tr.servers ) {
+            this.channel.sendAsync( this.coordinator.getServer( index ), "update-transaction", data );
+        }
     }
 
     public CompletableFuture< Void > start () {
@@ -47,7 +63,7 @@ public class CoordinatorController {
             try {
                 this.coordinator.onServerUpdate( report.id, server, report.state );
             } catch ( Exception e ) {
-                e.printStackTrace();
+                Logger.error( e );
             }
         }, this.executorService );
 

@@ -1,26 +1,35 @@
 package FSD.DistributedTransactions.Coordinator;
 
 import FSD.DistributedTransactions.TransactionState;
+import FSD.Logger;
 import io.atomix.storage.journal.SegmentedJournal;
 import io.atomix.storage.journal.SegmentedJournalReader;
+import io.atomix.storage.journal.SegmentedJournalWriter;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public class BaseCoordinator implements Coordinator {
-    private Map< Long, Transaction >     transactions    = new HashMap<>();
-    private List< Address >              serverAddresses = new ArrayList<>();
-    private long                         sequentialId    = 0;
-    private SegmentedJournal< LogEntry > journal         = null;
-    private Serializer serializer;
+    private Consumer< Transaction >  transactionListener = null;
+    private Map< Long, Transaction > transactions        = new HashMap<>();
+    private long                     sequentialId        = 0;
+
+    private List< Address >              serverAddresses;
+    private SegmentedJournal< LogEntry > journal;
+    private Serializer                   serializer;
 
     public BaseCoordinator ( List< Address > servers ) {
         this.serverAddresses = servers;
 
         this.serializer = Serializer.builder()
                 .withTypes( LogEntry.class )
+                .withTypes( TransactionState.class )
                 .build();
 
         this.journal = SegmentedJournal.< LogEntry >builder()
@@ -29,8 +38,17 @@ public class BaseCoordinator implements Coordinator {
                 .build();
     }
 
+    public void setTransactionListener ( Consumer<Transaction> listener ) {
+        this.transactionListener = listener;
+    }
+
     public Address getServer ( int index ) {
         return this.serverAddresses.get( index );
+    }
+
+    @Override
+    public List< Address > getServersList () {
+        return this.serverAddresses;
     }
 
     public int getServerIndex ( Address address ) {
@@ -47,9 +65,27 @@ public class BaseCoordinator implements Coordinator {
         return this.transactions.values();
     }
 
+    public void writeBlock ( long id, TransactionState state ) {
+        writeBlock( id, state, null );
+    }
+
+    private void writeBlock ( long id, TransactionState state, int servers[] ) {
+        SegmentedJournalWriter< LogEntry > writer = this.journal.writer();
+
+        writer.append( new LogEntry( id, servers, state ) );
+
+        writer.flush();
+
+        writer.close();
+    }
+
     @Override
     public Transaction onTransactionBegin ( int[] servers ) {
         Transaction transaction = new Transaction( this.sequentialId++, servers );
+
+        Logger.debug( "[COORDINATOR] Beginning transaction %s", transaction );
+
+        this.writeBlock( transaction.id, transaction.globalState, transaction.servers );
 
         this.transactions.put( transaction.id, transaction );
 
@@ -63,6 +99,8 @@ public class BaseCoordinator implements Coordinator {
         if ( tr == null ) {
             throw new Exception( "No transaction with id " + id + " was found." );
         }
+
+        Logger.debug( "[COORDINATOR] Setting transaction %d server %d from state %s to %s", id, server, tr.getServerState( server ), state );
 
         tr.setServerState( server, state );
 
@@ -80,6 +118,8 @@ public class BaseCoordinator implements Coordinator {
     }
 
     public void onStateChange ( Transaction transaction ) {
+        TransactionState previousState = transaction.globalState;
+
         if ( transaction.globalState == TransactionState.Waiting ) {
             if ( transaction.allState( TransactionState.Prepare ) ) {
                 transaction.globalState = TransactionState.Commit;
@@ -91,6 +131,16 @@ public class BaseCoordinator implements Coordinator {
                 this.transactions.remove( transaction.id );
             }
         }
+
+        if ( transaction.globalState != previousState ) {
+            Logger.debug( "[COORDINATOR] Setting transaction %d global state from %s to %s", transaction.id, previousState, transaction.globalState );
+
+            this.writeBlock( transaction.id, transaction.globalState );
+
+            if ( this.transactionListener != null ) {
+                this.transactionListener.accept( transaction );
+            }
+        }
     }
 
     @Override
@@ -100,7 +150,9 @@ public class BaseCoordinator implements Coordinator {
         for ( SegmentedJournalReader< LogEntry > it = reader; it.hasNext(); ) {
             LogEntry entry = it.next().entry();
 
-            if ( this.transactions.containsKey( entry.tid ) ) {
+            Logger.debug( "[COORDINATOR] Reading entry %s", entry );
+
+            if ( !this.transactions.containsKey( entry.tid ) ) {
                 Transaction tr = new Transaction( entry.tid, entry.servers );
 
                 tr.globalState = entry.type;
@@ -115,6 +167,8 @@ public class BaseCoordinator implements Coordinator {
             this.sequentialId = entry.tid + 1;
         }
 
-        return null;
+        Logger.debug( "[COORDINATOR] Initial transaction id: %d", this.sequentialId );
+
+        return CompletableFuture.completedFuture( null );
     }
 }

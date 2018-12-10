@@ -2,6 +2,7 @@ package FSD.DistributedTransactions.Participant;
 
 import FSD.DistributedTransactions.TransactionReport;
 import FSD.DistributedTransactions.TransactionState;
+import FSD.Logger;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.storage.journal.SegmentedJournal;
@@ -26,14 +27,17 @@ public class BaseParticipant < T > implements Participant< T > {
     private SegmentedJournal< LogEntry< T > > journal;
     private Map< Long, Transaction >          transactions;
 
-    public BaseParticipant ( Class< T > type, Address address, Address coordinator ) {
+    public BaseParticipant ( Address address, Address coordinator, Class< T > type, Class<Object> ... types ) {
         this.address = address;
         this.coordinator = coordinator;
         this.transactions = new HashMap<>();
 
         this.serializer = Serializer.builder()
                 .withTypes( type )
+                .withTypes( types )
                 .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
+                .withTypes( LogEntryType.class )
                 .withTypes( LogEntry.class )
                 .build();
 
@@ -67,6 +71,10 @@ public class BaseParticipant < T > implements Participant< T > {
         writer.flush();
         writer.close();
 
+        Logger.debug( "[PARTICIPANT][%s] Written to log: Prepare", this.address );
+
+        tr.state = TransactionState.Prepare;
+
         this.sendReport( id, TransactionState.Prepare );
 
         return tr.future;
@@ -76,48 +84,58 @@ public class BaseParticipant < T > implements Participant< T > {
         SegmentedJournalWriter< LogEntry< T > > writer = this.journal.writer();
 
         writer.append( new LogEntry<>( id, LogEntryType.fromState( state ) ) );
+
+        writer.flush();
+
+        writer.close();
     }
 
     private void sendReport ( long id, TransactionState state ) {
         TransactionReport report = new TransactionReport( id, state );
+
+        Logger.debug( "[PARTICIPANT][%s] Sending report to coordinator: %s", this.address, report );
 
         this.messagingService.sendAsync( this.coordinator, "update-transaction", this.serializer.encode( report ) );
     }
 
     @Override
     public void onCoordinatorUpdate ( long id, TransactionState state ) {
+        Logger.debug( "[PARTICIPANT][%s] onCoordinatorUpdate: %d, %s", this.address, id, state );
+
         Transaction tr = this.transactions.get( id );
 
         if ( tr == null ) {
+            Logger.debug( "[PARTICIPANT][%s] onCoordinatorUpdate: Transaction %d not found", this.address, id );
+
             return;
         }
 
-        if ( tr.state == TransactionState.Waiting && state == TransactionState.Prepare ) {
-            this.writeBlock( id, TransactionState.Prepare );
+        Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: Transaction %s", this.address, tr );
 
-            tr.state = state;
-
-            if ( tr.aborted ) {
-                this.sendReport( id, TransactionState.Abort );
-            } else {
-                this.sendReport( id, TransactionState.Commit );
-            }
+        if ( tr.state == TransactionState.Prepare && state == TransactionState.Prepare ) {
+            this.sendReport( id, TransactionState.Prepare );
         } else if ( tr.state == TransactionState.Prepare && state == TransactionState.Abort ) {
             this.writeBlock( id, TransactionState.Abort );
+
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d aborting", this.address, id );
+
+            this.transactions.remove( id );
 
             tr.state = state;
 
             tr.future.complete( false );
-
-            this.transactions.remove( id );
         } else if ( tr.state == TransactionState.Prepare && state == TransactionState.Commit ) {
             this.writeBlock( id, TransactionState.Commit );
+
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d commiting", this.address, id );
+
+            this.transactions.remove( id );
 
             tr.state = state;
 
             tr.future.complete( true );
-
-            this.transactions.remove( id );
+        } else {
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d no matching state for %s", this.address, id, tr.state );
         }
     }
 
@@ -133,16 +151,28 @@ public class BaseParticipant < T > implements Participant< T > {
         for ( SegmentedJournalReader< LogEntry<T> > it = reader; it.hasNext(); ) {
             LogEntry entry = it.next().entry();
 
-            if ( this.transactions.containsKey( entry.id ) ) {
+            if ( !this.transactions.containsKey( entry.id ) ) {
                 Transaction tr = new Transaction( entry.id, entry.type.toState() );
 
                 this.transactions.put( entry.id, tr );
             } else {
                 Transaction tr = this.transactions.get( entry.id );
 
+                Logger.debug( "[PARTICIPANT] [%s] start: type = %s", this.address, entry.type );
+
                 tr.state = entry.type.toState();
+
+                if ( tr.state == TransactionState.Commit || tr.state == TransactionState.Abort ) {
+                    this.transactions.remove( tr.id );
+                }
             }
         }
+
+        this.messagingService.registerHandler( "update-transaction", (o, m) -> {
+            TransactionReport report = this.serializer.decode( m );
+
+            this.onCoordinatorUpdate( report.id, report.state );
+        }, this.executorService );
 
         return this.messagingService.start().thenRun( () -> {} );
     }
