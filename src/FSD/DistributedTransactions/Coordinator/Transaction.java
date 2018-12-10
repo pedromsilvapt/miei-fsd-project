@@ -2,6 +2,8 @@ package FSD.DistributedTransactions.Coordinator;
 
 import FSD.DistributedTransactions.TransactionState;
 
+import java.util.Arrays;
+
 public class Transaction {
     public long             id;
     public int[]            servers;
@@ -12,7 +14,7 @@ public class Transaction {
         this.id = id;
         this.servers = servers;
         this.serverStates = new TransactionState[ servers.length ];
-        this.globalState = TransactionState.Prepare;
+        this.globalState = TransactionState.Waiting;
 
         for ( int i = 0; i < this.serverStates.length; i++ ) {
             this.serverStates[ i ] = TransactionState.Waiting;
@@ -57,5 +59,16 @@ public class Transaction {
 
     public TransactionState getServerState ( int server ) {
         return this.serverStates[ this.getServerIndex( server ) ];
+    }
+
+    public String toString () {
+        return String.format(
+                "Transaction@%d( id = %d, servers = %s, serverStates = %s, globalState = %s )",
+                this.hashCode(),
+                this.id,
+                Arrays.toString( this.servers ),
+                Arrays.toString( this.serverStates ),
+                this.globalState
+        );
     }
 }

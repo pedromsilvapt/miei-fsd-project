@@ -20,4 +20,8 @@ public class Transaction {
         this.state = state;
         this.future = new CompletableFuture<>();
     }
+
+    public String toString () {
+        return String.format( "Transaction@%s( id = %d, state = %s )", this.hashCode(), this.id, this.state );
+    }
 }
