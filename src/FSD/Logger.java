@@ -32,12 +32,24 @@ public class Logger {
         Logger.log( LogLevel.Debug, message );
     }
 
+    public static void debug ( String format, Object ... args ) {
+        Logger.debug( String.format( format, args ) );
+    }
+
     public static void info ( String message ) {
         Logger.log( LogLevel.Info, message );
     }
 
+    public static void info ( String format, Object ... args ) {
+        Logger.info( String.format( format, args ) );
+    }
+
     public static void error ( String message ) {
         Logger.log( LogLevel.Error, message );
+    }
+
+    public static void error ( String format, Object ... args ) {
+        Logger.error( String.format( format, args ) );
     }
 
     public static void error ( Exception exception ) {
@@ -46,6 +58,10 @@ public class Logger {
 
     public static void fatal ( String message ) {
         Logger.log( LogLevel.Fatal, message );
+    }
+
+    public static void fatal ( String format, Object ... args ) {
+        Logger.fatal( String.format( format, args ) );
     }
 
     public static void fatal ( Exception exception ) {
