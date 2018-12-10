@@ -1,6 +1,6 @@
-package DistributedTransactions.Coordinator;
+package FSD.DistributedTransactions.Coordinator;
 
-import DistributedTransactions.TransactionReport;
+import FSD.DistributedTransactions.TransactionReport;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;

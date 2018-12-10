@@ -1,6 +1,6 @@
-package DistributedTransactions.Coordinator;
+package FSD.DistributedTransactions.Coordinator;
 
-import DistributedTransactions.TransactionState;
+import FSD.DistributedTransactions.TransactionState;
 
 public class Transaction {
     public long             id;

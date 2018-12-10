@@ -1,6 +1,6 @@
-package DistributedTransactions.Coordinator;
+package FSD.DistributedTransactions.Coordinator;
 
-import DistributedTransactions.TransactionState;
+import FSD.DistributedTransactions.TransactionState;
 import io.atomix.storage.journal.SegmentedJournal;
 import io.atomix.storage.journal.SegmentedJournalReader;
 import io.atomix.utils.net.Address;

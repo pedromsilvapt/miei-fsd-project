@@ -1,4 +1,4 @@
-package DistributedTransactions.Participant;
+package FSD.DistributedTransactions.Participant;
 
 public class LogEntry < T > {
     public long         id;

@@ -1,6 +1,6 @@
-package DistributedTransactions.Participant;
+package FSD.DistributedTransactions.Participant;
 
-import DistributedTransactions.TransactionState;
+import FSD.DistributedTransactions.TransactionState;
 
 enum LogEntryType {
     Data,

@@ -1,7 +1,7 @@
-package DistributedTransactions.Participant;
+package FSD.DistributedTransactions.Participant;
 
-import DistributedTransactions.TransactionReport;
-import DistributedTransactions.TransactionState;
+import FSD.DistributedTransactions.TransactionReport;
+import FSD.DistributedTransactions.TransactionState;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.storage.journal.SegmentedJournal;

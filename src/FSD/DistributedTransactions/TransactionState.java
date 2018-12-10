@@ -1,4 +1,4 @@
-package DistributedTransactions;
+package FSD.DistributedTransactions;
 
 public enum TransactionState {
     Waiting,
