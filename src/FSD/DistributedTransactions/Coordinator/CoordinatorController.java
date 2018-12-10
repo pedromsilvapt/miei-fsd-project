@@ -1,14 +1,17 @@
 package FSD.DistributedTransactions.Coordinator;
 
 import FSD.DistributedTransactions.TransactionReport;
+import FSD.DistributedTransactions.TransactionRequest;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class CoordinatorController {
     private Coordinator             coordinator;
@@ -24,6 +27,7 @@ public class CoordinatorController {
         this.address = address;
 
         this.serializer = Serializer.builder()
+                .withTypes( ArrayList.class )
                 .withTypes( TransactionReport.class )
                 .build();
 
@@ -47,6 +51,14 @@ public class CoordinatorController {
             }
         }, this.executorService );
 
+        this.channel.registerHandler( "discover-participants", ( o, m ) -> {
+            List< String > addresses = this.coordinator.getServersList()
+                    .stream()
+                    .map( Address::toString )
+                    .collect( Collectors.toList() );
+
+            return this.serializer.encode( addresses );
+        }, this.executorService );
 
         this.channel.registerHandler( "create-transaction", ( o, m ) -> {
             TransactionRequest request = this.serializer.decode( m );
