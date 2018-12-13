@@ -27,7 +27,7 @@ public class CoordinatorController {
     public CoordinatorController ( Address address, Coordinator coordinator ) {
         this.coordinator = coordinator;
 
-        this.coordinator.setTransactionListener( this::onTransactionChange );
+        this.coordinator.setController( this );
 
         this.address = address;
 

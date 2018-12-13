@@ -6,8 +6,10 @@ import FSD.DistributedTransactions.Coordinator.CoordinatorController;
 import FSD.DistributedTransactions.Coordinator.Transaction;
 import FSD.DistributedTransactions.Participant.BaseParticipant;
 import FSD.DistributedTransactions.Participant.Participant;
+import FSD.DistributedTransactions.Participant.ParticipantController;
 import FSD.Logger;
 import io.atomix.utils.net.Address;
+import org.apache.commons.math3.analysis.function.Add;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,20 +28,30 @@ public class Main {
     public static void mainParticipant ( Address coordinator, List< Address > participants, int index ) {
         Address address = participants.get( index );
 
-        Participant< Integer > participant = new BaseParticipant< Integer >( address, coordinator, Integer.class );
+        Participant< Integer > participant = new BaseParticipant< Integer >( address.toString(), Integer.class );
+        ParticipantController<Integer> controller = new ParticipantController<>( participant, address, coordinator );
 
         try {
-            participant.start().get();
+            controller.start().get();
 
-            if ( index <= 1 ) {
+            if ( index == 0 ) {
                 Main.transactionBarrier.await();
 
                 Logger.debug( "[MAIN] [%d] Barrier released. Commiting.", index );
 
                 participant.tryCommit( Main.transaction, Arrays.asList( index, 2, 3 ) )
-                    .thenRun( () -> {
-                        Logger.debug( "[MAIN] [%d] Transaction commited.", index );
+                    .thenAccept( commited -> {
+                        Logger.debug( "[MAIN] [%d] Transaction commited %b.", index, commited );
                     } );
+            } else if ( index == 1 ) {
+                Main.transactionBarrier.await();
+
+                Logger.debug( "[MAIN] [%d] Barrier released. Commiting.", index );
+
+                participant.abort( Main.transaction )
+                        .thenRun( () -> {
+                            Logger.debug( "[MAIN] [%d] Transaction aborted.", index );
+                        } );
             }
 
             System.out.printf( "Participant %d\n", index );

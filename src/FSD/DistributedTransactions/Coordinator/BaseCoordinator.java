@@ -16,9 +16,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class BaseCoordinator implements Coordinator {
-    private Consumer< Transaction >  transactionListener = null;
     private Map< Long, Transaction > transactions        = new HashMap<>();
     private long                     sequentialId        = 0;
+    private CoordinatorController    controller          = null;
 
     private List< Address >              serverAddresses;
     private SegmentedJournal< LogEntry > journal;
@@ -38,8 +38,15 @@ public class BaseCoordinator implements Coordinator {
                 .build();
     }
 
-    public void setTransactionListener ( Consumer<Transaction> listener ) {
-        this.transactionListener = listener;
+
+    @Override
+    public CoordinatorController getController () {
+        return controller;
+    }
+
+    @Override
+    public void setController ( CoordinatorController controller ) {
+        this.controller = controller;
     }
 
     public Address getServer ( int index ) {
@@ -107,16 +114,6 @@ public class BaseCoordinator implements Coordinator {
         this.onStateChange( tr );
     }
 
-    @Override
-    public void onTransactionPrepared ( long id ) {
-
-    }
-
-    @Override
-    public void onTransactionFulfilled ( long id, TransactionState state ) {
-
-    }
-
     public void onStateChange ( Transaction transaction ) {
         TransactionState previousState = transaction.globalState;
 
@@ -137,9 +134,7 @@ public class BaseCoordinator implements Coordinator {
 
             this.writeBlock( transaction.id, transaction.globalState );
 
-            if ( this.transactionListener != null ) {
-                this.transactionListener.accept( transaction );
-            }
+            this.controller.onTransactionChange( transaction );
         }
     }
 
@@ -162,6 +157,10 @@ public class BaseCoordinator implements Coordinator {
                 Transaction tr = this.transactions.get( entry.tid );
 
                 tr.globalState = entry.type;
+
+                if ( entry.type == TransactionState.Commit || entry.type == TransactionState.Abort ) {
+                    this.transactions.remove( tr.id );
+                }
             }
 
             this.sequentialId = entry.tid + 1;
