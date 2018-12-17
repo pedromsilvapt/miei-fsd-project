@@ -10,6 +10,7 @@ import io.atomix.utils.serializer.Serializer;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -17,7 +18,7 @@ public class BaseParticipant < T > implements Participant< T > {
     private String                            name;
     private Serializer                        serializer;
     private SegmentedJournal< LogEntry< T > > journal;
-    private Map< Long, Transaction >          transactions;
+    private Map< Long, Transaction< T > >     transactions;
     private Class< ? >[]                      serializableTypes;
     private ParticipantController< T >        controller;
     private CompletableFuture< Void > starter = null;
@@ -63,6 +64,10 @@ public class BaseParticipant < T > implements Participant< T > {
         return name;
     }
 
+    public Collection<Transaction<T>> getTransactions () {
+        return this.transactions.values();
+    }
+
     private void writeBlock ( long id, TransactionState state ) {
         SegmentedJournalWriter< LogEntry< T > > writer = this.journal.writer();
 
@@ -75,7 +80,7 @@ public class BaseParticipant < T > implements Participant< T > {
 
     @Override
     public CompletableFuture< Boolean > tryCommit ( long id, Collection< T > blocks ) {
-        Transaction tr = new Transaction( id, TransactionState.Waiting );
+        Transaction< T > tr = new Transaction<>( id, TransactionState.Waiting, blocks );
 
         this.transactions.put( id, tr );
 
@@ -103,7 +108,7 @@ public class BaseParticipant < T > implements Participant< T > {
     public void onCoordinatorUpdate ( long id, TransactionState state ) {
         Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d, %s", this.name, id, state );
 
-        Transaction tr = this.transactions.get( id );
+        Transaction< T > tr = this.transactions.get( id );
 
         if ( tr == null ) {
             Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: Transaction %d not found", this.name, id );
@@ -147,8 +152,8 @@ public class BaseParticipant < T > implements Participant< T > {
     }
 
     @Override
-    public CompletableFuture<Void> abort ( long id ) {
-        Transaction tr = new Transaction( id, TransactionState.Abort );
+    public CompletableFuture< Void > abort ( long id ) {
+        Transaction< T > tr = new Transaction<>( id, TransactionState.Abort );
 
         this.transactions.put( id, tr );
 
@@ -172,18 +177,26 @@ public class BaseParticipant < T > implements Participant< T > {
         SegmentedJournalReader< LogEntry< T > > reader = this.journal.openReader( 0 );
 
         for ( SegmentedJournalReader< LogEntry< T > > it = reader; it.hasNext(); ) {
-            LogEntry entry = it.next().entry();
+            LogEntry<T> entry = it.next().entry();
 
             if ( !this.transactions.containsKey( entry.id ) ) {
-                Transaction tr = new Transaction( entry.id, entry.type.toState() );
+                Transaction<T> tr = new Transaction<>( entry.id, entry.type.toState() );
+
+                if ( entry.type == LogEntryType.Data ) {
+                    tr.blocks.add( entry.data );
+                }
 
                 this.transactions.put( entry.id, tr );
             } else {
-                Transaction tr = this.transactions.get( entry.id );
+                Transaction<T> tr = this.transactions.get( entry.id );
 
                 Logger.debug( "[PARTICIPANT] [%s] start: type = %s", this.name, entry.type );
 
                 tr.state = entry.type.toState();
+
+                if ( entry.type == LogEntryType.Data ) {
+                    tr.blocks.add( entry.data );
+                }
 
                 if ( tr.state == TransactionState.Commit || tr.state == TransactionState.Abort ) {
                     this.transactions.remove( tr.id );

@@ -2,7 +2,10 @@ package FSD.DistributedMap;
 
 import FSD.DistributedTransactions.Participant.BaseParticipant;
 import FSD.DistributedTransactions.Participant.Participant;
+import FSD.DistributedTransactions.Participant.Transaction;
+import FSD.DistributedTransactions.TransactionState;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -12,6 +15,7 @@ public class BaseMapNode implements MapNode {
     private Map< Long, Long >         locks      = new HashMap<>();
     private MapNodeController         controller = null;
     private CompletableFuture< Void > starter    = null;
+    private MapNodeStorage            storage    = null;
 
     @Override
     public MapNodeController getController () {
@@ -34,6 +38,8 @@ public class BaseMapNode implements MapNode {
 
     public BaseMapNode ( Participant< ChangeLog< Long, byte[] > > participant ) {
         this.transactions = participant;
+
+        this.storage = new MapNodeStorage( this.transactions.getName() );
     }
 
     private boolean lock ( long key, long transaction ) {
@@ -93,6 +99,14 @@ public class BaseMapNode implements MapNode {
 
             this.data.putAll( data );
 
+            try {
+                this.storage.putAll( data );
+            } catch ( IOException e ) {
+                e.printStackTrace();
+            }
+
+            this.transactions.release( transaction );
+
             return commited;
         } );
     }
@@ -113,6 +127,30 @@ public class BaseMapNode implements MapNode {
             return this.starter;
         }
 
-        return this.starter = this.transactions.start();
+        return this.starter = this.transactions.start().thenRun( () -> {
+            this.data = this.storage.getAll();
+
+            for ( Transaction<ChangeLog<Long, byte[]>> transaction : this.transactions.getTransactions() ) {
+                try {
+                    if ( transaction.state == TransactionState.Commit ) {
+                        for ( ChangeLog<Long, byte[]> change : transaction.blocks ) {
+                            this.data.put( change.getKey(), change.getNewValue() );
+                            this.storage.put( change.getKey(), change.getNewValue() );
+                        }
+
+                        // RELEASE THIS TRANSACTION
+                        this.transactions.release( transaction.id );
+                    } else if (transaction.state == TransactionState.Abort ) {
+                        for ( ChangeLog<Long, byte[]> change : transaction.blocks ) {
+                            this.data.put( change.getKey(), change.getOldValue() );
+                            this.storage.put( change.getKey(), change.getOldValue() );
+                        }
+
+                        // RELEASE THIS TRANSACTION
+                        this.transactions.release( transaction.id );
+                    }
+                } catch ( IOException ignored ) { }
+            }
+        } );
     }
 }

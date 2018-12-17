@@ -11,6 +11,8 @@ public interface Participant < T > extends Controllable< ParticipantController< 
 
     String getName ();
 
+    Collection<Transaction<T>> getTransactions ();
+
     void onCoordinatorUpdate ( long transaction, TransactionState state );
 
     // Tries to write all the given data blocks to the log file
