@@ -24,6 +24,6 @@ public class LogEntry {
 
     @Override
     public String toString () {
-        return String.format( "LogEntry( tid = %u, servers = %s, state = %s )", this.tid, Arrays.toString( this.servers ), this.type );
+        return String.format( "LogEntry( tid = %d, servers = %s, state = %s )", this.tid, Arrays.toString( this.servers ), this.type );
     }
 }

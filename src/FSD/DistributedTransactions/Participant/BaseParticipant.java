@@ -2,57 +2,85 @@ package FSD.DistributedTransactions.Participant;
 
 import FSD.DistributedTransactions.TransactionReport;
 import FSD.DistributedTransactions.TransactionState;
-import io.atomix.cluster.messaging.ManagedMessagingService;
-import io.atomix.cluster.messaging.impl.NettyMessagingService;
+import FSD.Logger;
 import io.atomix.storage.journal.SegmentedJournal;
 import io.atomix.storage.journal.SegmentedJournalReader;
 import io.atomix.storage.journal.SegmentedJournalWriter;
-import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class BaseParticipant < T > implements Participant< T > {
+    private String                            name;
     private Serializer                        serializer;
-    private ExecutorService                   executorService;
-    private ManagedMessagingService           messagingService;
-    private Address                           address;
-    private Address                           coordinator;
     private SegmentedJournal< LogEntry< T > > journal;
-    private Map< Long, Transaction >          transactions;
+    private Map< Long, Transaction< T > >     transactions;
+    private Class< ? >[]                      serializableTypes;
+    private ParticipantController< T >        controller;
+    private CompletableFuture< Void > starter = null;
 
-    public BaseParticipant ( Class< T > type, Address address, Address coordinator ) {
-        this.address = address;
-        this.coordinator = coordinator;
-        this.transactions = new HashMap<>();
+    public BaseParticipant ( String name, Class< ? >... types ) {
+        this.name = name;
+
+        this.serializableTypes = types;
 
         this.serializer = Serializer.builder()
-                .withTypes( type )
+                .withTypes( types )
                 .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
+                .withTypes( LogEntryType.class )
                 .withTypes( LogEntry.class )
                 .build();
 
-        this.executorService = Executors.newSingleThreadExecutor();
-
-        this.messagingService = NettyMessagingService
-                .builder()
-                .withAddress( this.address )
-                .build();
+        this.transactions = new HashMap<>();
 
         this.journal = SegmentedJournal.< LogEntry< T > >builder()
-                .withName( this.address.toString() )
+                .withName( this.name )
                 .withSerializer( this.serializer )
                 .build();
     }
 
     @Override
+    public Class< ? >[] getSerializableTypes () {
+        return serializableTypes;
+    }
+
+    @Override
+    public ParticipantController< T > getController () {
+        return controller;
+    }
+
+    @Override
+    public void setController ( ParticipantController< T > controller ) {
+        this.controller = controller;
+    }
+
+    @Override
+    public String getName () {
+        return name;
+    }
+
+    public Collection<Transaction<T>> getTransactions () {
+        return this.transactions.values();
+    }
+
+    private void writeBlock ( long id, TransactionState state ) {
+        SegmentedJournalWriter< LogEntry< T > > writer = this.journal.writer();
+
+        writer.append( new LogEntry<>( id, LogEntryType.fromState( state ) ) );
+
+        writer.flush();
+
+        writer.close();
+    }
+
+    @Override
     public CompletableFuture< Boolean > tryCommit ( long id, Collection< T > blocks ) {
-        Transaction tr = new Transaction( id, TransactionState.Waiting );
+        Transaction< T > tr = new Transaction<>( id, TransactionState.Waiting, blocks );
 
         this.transactions.put( id, tr );
 
@@ -67,83 +95,115 @@ public class BaseParticipant < T > implements Participant< T > {
         writer.flush();
         writer.close();
 
-        this.sendReport( id, TransactionState.Prepare );
+        Logger.debug( "[PARTICIPANT][%s] Written to log: Prepare", this.name );
+
+        tr.state = TransactionState.Prepare;
+
+        this.controller.sendReport( id, TransactionState.Prepare );
 
         return tr.future;
     }
 
-    private void writeBlock ( long id, TransactionState state ) {
-        SegmentedJournalWriter< LogEntry< T > > writer = this.journal.writer();
-
-        writer.append( new LogEntry<>( id, LogEntryType.fromState( state ) ) );
-    }
-
-    private void sendReport ( long id, TransactionState state ) {
-        TransactionReport report = new TransactionReport( id, state );
-
-        this.messagingService.sendAsync( this.coordinator, "update-transaction", this.serializer.encode( report ) );
-    }
-
     @Override
     public void onCoordinatorUpdate ( long id, TransactionState state ) {
-        Transaction tr = this.transactions.get( id );
+        Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d, %s", this.name, id, state );
+
+        Transaction< T > tr = this.transactions.get( id );
 
         if ( tr == null ) {
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: Transaction %d not found", this.name, id );
+
             return;
         }
 
-        if ( tr.state == TransactionState.Waiting && state == TransactionState.Prepare ) {
-            this.writeBlock( id, TransactionState.Prepare );
+        Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: Transaction %s", this.name, tr );
 
-            tr.state = state;
-
-            if ( tr.aborted ) {
-                this.sendReport( id, TransactionState.Abort );
-            } else {
-                this.sendReport( id, TransactionState.Commit );
-            }
-        } else if ( tr.state == TransactionState.Prepare && state == TransactionState.Abort ) {
+        if ( tr.state == TransactionState.Prepare && state == TransactionState.Prepare ) {
+            this.controller.sendReport( id, TransactionState.Prepare );
+        } else if ( state == TransactionState.Abort ) {
             this.writeBlock( id, TransactionState.Abort );
+
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d aborting", this.name, id );
+
+            this.transactions.remove( id );
 
             tr.state = state;
 
             tr.future.complete( false );
-
-            this.transactions.remove( id );
         } else if ( tr.state == TransactionState.Prepare && state == TransactionState.Commit ) {
             this.writeBlock( id, TransactionState.Commit );
+
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d commiting", this.name, id );
+
+            this.transactions.remove( id );
 
             tr.state = state;
 
             tr.future.complete( true );
-
-            this.transactions.remove( id );
+        } else {
+            Logger.debug( "[PARTICIPANT] [%s] onCoordinatorUpdate: %d no matching state for %s", this.name, id, tr.state );
         }
     }
 
     @Override
     public void release ( long transaction ) {
+        // TODO As of now, all transactions, once recorded in the log, are kept there forever
+        // This is wasteful, since once those transactions have been persisted to disk, they can be released
+    }
 
+    @Override
+    public CompletableFuture< Void > abort ( long id ) {
+        Transaction< T > tr = new Transaction<>( id, TransactionState.Abort );
+
+        this.transactions.put( id, tr );
+
+        writeBlock( id, TransactionState.Abort );
+
+        Logger.debug( "[PARTICIPANT][%s] Written to log: Abort", this.name );
+
+        tr.state = TransactionState.Abort;
+
+        this.controller.sendReport( id, TransactionState.Abort );
+
+        return tr.future.thenRun( () -> {} );
     }
 
     @Override
     public CompletableFuture< Void > start () {
-        SegmentedJournalReader< LogEntry<T> > reader = this.journal.openReader( 0 );
+        if ( this.starter != null ) {
+            return this.starter;
+        }
 
-        for ( SegmentedJournalReader< LogEntry<T> > it = reader; it.hasNext(); ) {
-            LogEntry entry = it.next().entry();
+        SegmentedJournalReader< LogEntry< T > > reader = this.journal.openReader( 0 );
 
-            if ( this.transactions.containsKey( entry.id ) ) {
-                Transaction tr = new Transaction( entry.id, entry.type.toState() );
+        for ( SegmentedJournalReader< LogEntry< T > > it = reader; it.hasNext(); ) {
+            LogEntry<T> entry = it.next().entry();
+
+            if ( !this.transactions.containsKey( entry.id ) ) {
+                Transaction<T> tr = new Transaction<>( entry.id, entry.type.toState() );
+
+                if ( entry.type == LogEntryType.Data ) {
+                    tr.blocks.add( entry.data );
+                }
 
                 this.transactions.put( entry.id, tr );
             } else {
-                Transaction tr = this.transactions.get( entry.id );
+                Transaction<T> tr = this.transactions.get( entry.id );
+
+                Logger.debug( "[PARTICIPANT] [%s] start: type = %s", this.name, entry.type );
 
                 tr.state = entry.type.toState();
+
+                if ( entry.type == LogEntryType.Data ) {
+                    tr.blocks.add( entry.data );
+                }
+
+                if ( tr.state == TransactionState.Commit || tr.state == TransactionState.Abort ) {
+                    this.transactions.remove( tr.id );
+                }
             }
         }
 
-        return this.messagingService.start().thenRun( () -> {} );
+        return this.starter = CompletableFuture.completedFuture( null );
     }
 }
