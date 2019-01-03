@@ -10,7 +10,6 @@ import io.atomix.utils.serializer.Serializer;
 
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -64,7 +63,7 @@ public class BaseParticipant < T > implements Participant< T > {
         return name;
     }
 
-    public Collection<Transaction<T>> getTransactions () {
+    public Collection< Transaction< T > > getTransactions () {
         return this.transactions.values();
     }
 
@@ -80,6 +79,12 @@ public class BaseParticipant < T > implements Participant< T > {
 
     @Override
     public CompletableFuture< Boolean > tryCommit ( long id, Collection< T > blocks ) {
+        if ( this.transactions.containsKey( id ) ) {
+            this.controller.sendReport( id, TransactionState.Prepare );
+
+            return this.transactions.get( id ).future;
+        }
+
         Transaction< T > tr = new Transaction<>( id, TransactionState.Waiting, blocks );
 
         this.transactions.put( id, tr );
@@ -153,9 +158,15 @@ public class BaseParticipant < T > implements Participant< T > {
 
     @Override
     public CompletableFuture< Void > abort ( long id ) {
-        Transaction< T > tr = new Transaction<>( id, TransactionState.Abort );
+        Transaction< T > tr = null;
 
-        this.transactions.put( id, tr );
+        if ( this.transactions.containsKey( id ) ) {
+            tr = this.transactions.get( id );
+        } else {
+            tr = new Transaction<>( id, TransactionState.Abort );
+
+            this.transactions.put( id, tr );
+        }
 
         writeBlock( id, TransactionState.Abort );
 
@@ -177,10 +188,10 @@ public class BaseParticipant < T > implements Participant< T > {
         SegmentedJournalReader< LogEntry< T > > reader = this.journal.openReader( 0 );
 
         for ( SegmentedJournalReader< LogEntry< T > > it = reader; it.hasNext(); ) {
-            LogEntry<T> entry = it.next().entry();
+            LogEntry< T > entry = it.next().entry();
 
             if ( !this.transactions.containsKey( entry.id ) ) {
-                Transaction<T> tr = new Transaction<>( entry.id, entry.type.toState() );
+                Transaction< T > tr = new Transaction<>( entry.id, entry.type.toState() );
 
                 if ( entry.type == LogEntryType.Data ) {
                     tr.blocks.add( entry.data );
@@ -188,7 +199,7 @@ public class BaseParticipant < T > implements Participant< T > {
 
                 this.transactions.put( entry.id, tr );
             } else {
-                Transaction<T> tr = this.transactions.get( entry.id );
+                Transaction< T > tr = this.transactions.get( entry.id );
 
                 Logger.debug( "[PARTICIPANT] [%s] start: type = %s", this.name, entry.type );
 
