@@ -71,6 +71,14 @@ public class ParticipantController < T > {
         }
 
         return this.starter = this.participant.start().thenCompose( a -> {
+            for ( Transaction<T> transaction : this.participant.getTransactions() ) {
+                if ( transaction.state == TransactionState.Waiting ) {
+                    this.participant.abort( transaction.id );
+                } else if ( transaction.state == TransactionState.Prepare ) {
+                    this.participant.tryCommit( transaction.id, null );
+                }
+            }
+
             this.messagingService.registerHandler( "update-transaction", ( o, m ) -> {
                 TransactionReport report = this.serializer.decode( m );
 

@@ -80,6 +80,13 @@ public class BaseParticipant < T > implements Participant< T > {
 
     @Override
     public CompletableFuture< Boolean > tryCommit ( long id, Collection< T > blocks ) {
+        if ( this.transactions.containsKey( id ) ) {
+
+            this.controller.sendReport( id, TransactionState.Prepare );
+
+            return this.transactions.get( id ).future;
+        }
+
         Transaction< T > tr = new Transaction<>( id, TransactionState.Waiting, blocks );
 
         this.transactions.put( id, tr );
@@ -153,9 +160,15 @@ public class BaseParticipant < T > implements Participant< T > {
 
     @Override
     public CompletableFuture< Void > abort ( long id ) {
-        Transaction< T > tr = new Transaction<>( id, TransactionState.Abort );
+        Transaction< T > tr = null;
 
-        this.transactions.put( id, tr );
+        if ( this.transactions.containsKey( id ) ) {
+            tr = transactions.get( id );
+        } else {
+            tr = new Transaction<>( id, TransactionState.Abort );
+
+            this.transactions.put( id, tr );
+        }
 
         writeBlock( id, TransactionState.Abort );
 
