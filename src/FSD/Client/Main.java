@@ -13,7 +13,7 @@ public class Main {
     public static List< Thread > threads = new ArrayList<>();
 
     public static void mainClient(Address address, Address coordinatorAddress, List<Address> servers) {
-        Client client = new BaseClient(address, coordinatorAddress, servers);
+        Client client = new BaseClient(address, coordinatorAddress);
         ClientController controller = new ClientController(client, address, coordinatorAddress);
 
         try {

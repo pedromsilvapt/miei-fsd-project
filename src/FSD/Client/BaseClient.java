@@ -13,10 +13,9 @@ public class BaseClient implements Client {
     private List< Address > serverAddresses;
     private ClientController controller;
 
-    public BaseClient(Address address, Address coordinatorAddress, List< Address > serverAddresses) {
+    public BaseClient(Address address, Address coordinatorAddress) {
         this.address = address;
         this.coordinatorAddress = coordinatorAddress;
-        this.serverAddresses = serverAddresses;
     }
 
     @Override
@@ -36,13 +35,16 @@ public class BaseClient implements Client {
             return CompletableFuture.completedFuture( true );
         }
 
-        return this.createTransaction().thenCompose( transactionId -> {
+        // Distribui as varias chaves pelos servidores correspondentes
+        Map< Address, Map< Long, byte[] > > grouped = groupValuesByServer( values );
+
+        // Obtem os indices dos participantes envolvidos nesta transaçao
+        Collection<Integer> participants = grouped.keySet().stream().map( addr -> this.serverAddresses.indexOf( addr ) ).collect( Collectors.toList() );
+
+        return this.createTransaction( participants ).thenCompose( transactionId -> {
             // Criamos uma nova completable-future. So vai ser resolvida quando todos os servidores responderem com
             // sucesso, ou quando o primeiro devolver sem sucesso
             CompletableFuture< Boolean > future = new CompletableFuture<>();
-
-            // Distribui as varias chaves pelos servidores correspondentes
-            Map< Address, Map< Long, byte[] > > grouped = groupValuesByServer( values );
 
             // Um contador para saber quantas respostas ainda faltam receber
             AtomicInteger missing = new AtomicInteger( grouped.size() );
@@ -102,11 +104,11 @@ public class BaseClient implements Client {
         return future;
     }
 
-    public CompletableFuture< Integer > createTransaction () {
-        return this.controller.createTransaction();
+    private CompletableFuture< Integer > createTransaction ( Collection<Integer> participants ) {
+        return this.controller.createTransaction( new ArrayList<>( participants ) );
     }
 
-    public Map< Address, Map< Long, byte[] > > groupValuesByServer ( Map< Long, byte[] > values ) {
+    private Map< Address, Map< Long, byte[] > > groupValuesByServer ( Map< Long, byte[] > values ) {
         Map< Address, Map< Long, byte[] > > grouped = new HashMap<>();
 
         for ( Long key : values.keySet() ) {
@@ -122,7 +124,7 @@ public class BaseClient implements Client {
         return grouped;
     }
 
-    public Map< Address, Collection< Long > > groupKeysByServer ( Collection< Long > keys ) {
+    private Map< Address, Collection< Long > > groupKeysByServer ( Collection< Long > keys ) {
         Map< Address, Collection< Long > > grouped = new HashMap<>();
 
         for ( Long key : keys ) {

@@ -1,6 +1,7 @@
 package FSD.Client;
 
 import FSD.DistributedMap.MapNodeController.PutRequest;
+import FSD.DistributedTransactions.TransactionRequest;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
@@ -49,13 +50,13 @@ public class ClientController {
     }
 
     public CompletableFuture<Map<Long, byte[]>> getRequest(Address server, Collection<Long> values) {
-        return channel.sendAndReceive(server, "get", serializer.encode(values))
-                      .thenApply(a -> null);
+        return channel.sendAndReceive(server, "put", serializer.encode(values)).thenApply( serializer::decode );
     }
 
-    public CompletableFuture< Integer > createTransaction () {
-        // TODO
-        return CompletableFuture.completedFuture(1);
+    public CompletableFuture< Integer > createTransaction ( List<Integer> participants ) {
+        TransactionRequest request = new TransactionRequest( participants );
+
+        return channel.sendAndReceive(coordinator, "create-transaction", serializer.encode(request)).thenApply( serializer::decode );
     }
 
 
@@ -67,7 +68,6 @@ public class ClientController {
     }
 
     public CompletableFuture< Void > start () {
-        // TODO
         return this.client.start()
                 .thenCompose( m -> this.channel.start() )
                 .thenApply( a -> null);
