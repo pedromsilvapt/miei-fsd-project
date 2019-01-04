@@ -3,6 +3,7 @@ package FSD.Client;
 import io.atomix.utils.net.Address;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -11,12 +12,12 @@ public class Main {
 
     public static List< Thread > threads = new ArrayList<>();
 
-    public static void mainClient(Address address, Address coordinatorAddress) {
-        Client client = new BaseClient(address, coordinatorAddress);
+    public static void mainClient(Address address, Address coordinatorAddress, List<Address> servers) {
+        Client client = new BaseClient(address, coordinatorAddress, servers);
         ClientController controller = new ClientController(client, address, coordinatorAddress);
 
         try {
-            // controller.start().get();
+            controller.start().get();
 
             // Transaction tr = Get from ...
 
@@ -51,7 +52,13 @@ public class Main {
         Address clientAddress = Address.from( "localhost:12350" );
         Address coordinatorAddress = Address.from( "localhost:12344" );
 
-        Main.run( () -> Main.mainClient(clientAddress, coordinatorAddress) );
+        List< Address > addresses = Arrays.asList(
+                Address.from( "localhost:12345" ),
+                Address.from( "localhost:12346" ),
+                Address.from( "localhost:12347" )
+        );
+
+        Main.run( () -> Main.mainClient(clientAddress, coordinatorAddress, addresses) );
 
         Main.join();
     }

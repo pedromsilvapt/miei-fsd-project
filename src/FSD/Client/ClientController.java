@@ -6,15 +6,19 @@ import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class ClientController {
-    private Address coordinator;
     private Client client;
+    private Address coordinator;
     private Serializer serializer;
     private ExecutorService executorService;
     private ManagedMessagingService channel;
@@ -38,17 +42,43 @@ public class ClientController {
         this.executorService = Executors.newSingleThreadExecutor();
     }
 
-    public CompletableFuture<Boolean> put(Map<Long, byte[]> data) {
-        long transaction = 1; // get from coordinator
+    public CompletableFuture<Boolean> putRequest(long transaction, Address server, Map<Long, byte[]> data) {
         PutRequest request = new PutRequest(transaction, data);
         CompletableFuture<byte[]> response =
-                channel.sendAndReceive(coordinator, "put", serializer.encode(request));
-
+                channel.sendAndReceive(server, "put", serializer.encode(request));
+        // TODO
         return null;
     }
 
-    public CompletableFuture<Map<Long, byte[]>> get(Collection<Long> values) {
+    public CompletableFuture<Map<Long, byte[]>> getRequest(Address server, Collection<Long> values) {
+        CompletableFuture<byte[]> response =
+                channel.sendAndReceive(server, "put", serializer.encode(values));
         // TODO
         return null;
+    }
+
+    public CompletableFuture< Integer > createTransaction () {
+        // TODO
+        return CompletableFuture.completedFuture(1);
+    }
+
+
+    public List<String> discoverParticipants() {
+        List<String> addresses = new ArrayList<>();
+        CompletableFuture<byte[]> response =
+                channel.sendAndReceive(coordinator, "discover-participants", serializer.encode(addresses));
+        try {
+            addresses = serializer.decode(response.get());
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
+        return addresses;
+    }
+
+    public CompletableFuture< Void > start () {
+        // TODO
+        return this.client.start()
+                .thenCompose( m -> this.channel.start() )
+                .thenApply( a -> null);
     }
 }
