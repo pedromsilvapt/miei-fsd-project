@@ -6,6 +6,7 @@ import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -37,11 +38,17 @@ public class ClientController {
         this.executorService = Executors.newSingleThreadExecutor();
     }
 
-    public CompletableFuture<Boolean> putRequest(long transaction, Map<Long, byte[]> data) {
+    public CompletableFuture<Boolean> put(Map<Long, byte[]> data) {
+        long transaction = 1; // get from coordinator
         PutRequest request = new PutRequest(transaction, data);
         CompletableFuture<byte[]> response =
                 channel.sendAndReceive(coordinator, "put", serializer.encode(request));
 
+        return null;
+    }
+
+    public CompletableFuture<Map<Long, byte[]>> get(Collection<Long> values) {
+        // TODO
         return null;
     }
 }

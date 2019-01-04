@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public class BaseClient implements Client {
-    private long transactionId;
     private Address address;
     private Address coordinatorAddress;
     private ClientController controller;
@@ -15,10 +14,6 @@ public class BaseClient implements Client {
     public BaseClient(Address address, Address coordinatorAddress) {
         this.address = address;
         this.coordinatorAddress = coordinatorAddress;
-    }
-
-    public long getTransactionId() {
-        return transactionId;
     }
 
     @Override
@@ -33,13 +28,12 @@ public class BaseClient implements Client {
 
     @Override
     public CompletableFuture<Boolean> put(Map<Long, byte[]> values) {
-        return controller.putRequest(transactionId, values);
+        return controller.put(values);
     }
 
     @Override
     public CompletableFuture<Map<Long, byte[]>> get(Collection<Long> values) {
-        // TODO
-        return null;
+        return controller.get(values);
     }
 
     @Override
