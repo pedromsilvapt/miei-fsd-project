@@ -59,6 +59,7 @@ public class MapNodeController {
         this.participantController = new ParticipantController<>( this.node.getTransactions(), this.serializer, this.messagingService, this.executorService, coordinator );
 
         this.messagingService.registerHandler( "get", this::onGetRequest );
+        this.messagingService.registerHandler( "put", this::onPutRequest );
     }
 
     public CompletableFuture< byte[] > onGetRequest ( Address origin, byte[] message ) {
