@@ -14,7 +14,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 public class ClientController {
     private Client client;
@@ -63,16 +62,11 @@ public class ClientController {
     }
 
 
-    public List<String> discoverParticipants() {
+    public CompletableFuture<List<String>> discoverParticipants() {
         List<String> addresses = new ArrayList<>();
         CompletableFuture<byte[]> response =
                 channel.sendAndReceive(coordinator, "discover-participants", serializer.encode(addresses));
-        try {
-            addresses = serializer.decode(response.get());
-        } catch (InterruptedException | ExecutionException e) {
-            e.printStackTrace();
-        }
-        return addresses;
+        return response.thenApply( bytes -> serializer.decode( bytes ) );
     }
 
     public CompletableFuture< Void > start () {
