@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 
 public class ClientController {
     private Client client;
@@ -43,18 +44,13 @@ public class ClientController {
 
     public CompletableFuture<Boolean> putRequest(long transaction, Address server, Map<Long, byte[]> data) {
         PutRequest request = new PutRequest(transaction, data);
-        CompletableFuture<byte[]> response =
-                channel.sendAndReceive(server, "put", serializer.encode(request));
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
-
-        return future;
+        return channel.sendAndReceive(server, "put", serializer.encode(request))
+                      .thenApply(this.serializer::decode);
     }
 
     public CompletableFuture<Map<Long, byte[]>> getRequest(Address server, Collection<Long> values) {
-        CompletableFuture<byte[]> response =
-                channel.sendAndReceive(server, "put", serializer.encode(values));
-        // TODO
-        return null;
+        return channel.sendAndReceive(server, "get", serializer.encode(values))
+                      .thenApply(a -> null);
     }
 
     public CompletableFuture< Integer > createTransaction () {
