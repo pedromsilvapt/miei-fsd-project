@@ -91,18 +91,20 @@ public class BaseMapNode implements MapNode {
         }
 
         if ( !this.lockAll( data.keySet(), transaction ) ) {
-            return CompletableFuture.completedFuture( false );
+            return this.transactions.abort( transaction ).thenApply( a -> false );
         }
 
         return this.transactions.tryCommit( transaction, blocks ).thenApply( commited -> {
             this.unlockAll( data.keySet(), transaction );
 
-            this.data.putAll( data );
+            if ( commited ) {
+                this.data.putAll( data );
 
-            try {
-                this.storage.putAll( data );
-            } catch ( IOException e ) {
-                e.printStackTrace();
+                try {
+                    this.storage.putAll( data );
+                } catch ( IOException e ) {
+                    e.printStackTrace();
+                }
             }
 
             this.transactions.release( transaction );
