@@ -45,8 +45,9 @@ public class ClientController {
         PutRequest request = new PutRequest(transaction, data);
         CompletableFuture<byte[]> response =
                 channel.sendAndReceive(server, "put", serializer.encode(request));
-        // TODO
-        return null;
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+
+        return future;
     }
 
     public CompletableFuture<Map<Long, byte[]>> getRequest(Address server, Collection<Long> values) {

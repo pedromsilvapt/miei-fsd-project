@@ -39,7 +39,7 @@ public class BaseClient implements Client {
         return this.createTransaction().thenCompose( transactionId -> {
             // Criamos uma nova completable-future. So vai ser resolvida quando todos os servidores responderem com
             // sucesso, ou quando o primeiro devolver sem sucesso
-            CompletableFuture< Boolean > future = new CompletableFuture< Boolean >();
+            CompletableFuture< Boolean > future = new CompletableFuture<>();
 
             // Distribui as varias chaves pelos servidores correspondentes
             Map< Address, Map< Long, byte[] > > grouped = groupValuesByServer( values );
@@ -140,11 +140,12 @@ public class BaseClient implements Client {
 
     @Override
     public CompletableFuture<Void> start() {
-        serverAddresses =
-                controller.discoverParticipants()
-                .stream()
-                .map(Address::from)
-                .collect(Collectors.toList());
-        return CompletableFuture.completedFuture( null );
+        return controller.discoverParticipants()
+                .thenAccept( participants ->
+                        serverAddresses = participants
+                        .stream()
+                        .map(Address::from)
+                        .collect(Collectors.toList())
+                );
     }
 }
