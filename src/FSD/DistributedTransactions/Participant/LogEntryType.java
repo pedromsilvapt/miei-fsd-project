@@ -2,7 +2,7 @@ package FSD.DistributedTransactions.Participant;
 
 import FSD.DistributedTransactions.TransactionState;
 
-enum LogEntryType {
+public enum LogEntryType {
     Data,
     Prepare,
     Commit,

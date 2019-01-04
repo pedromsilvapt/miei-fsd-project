@@ -1,5 +1,6 @@
 package FSD.Client;
 
+import FSD.Logger;
 import io.atomix.utils.net.Address;
 
 import java.util.*;
@@ -51,6 +52,7 @@ public class BaseClient implements Client {
 
             for ( Address address : grouped.keySet() ) {
                 // Comunica ao servidor a transaçao
+                Logger.debug( "[CLIENT] [TR %d] Put request for %s", transactionId, grouped.get( address ).toString() );
                 controller.putRequest( transactionId, address, grouped.get( address ) ).thenAccept( success -> {
                     if ( success ) {
                         int m = missing.decrementAndGet();
@@ -89,11 +91,14 @@ public class BaseClient implements Client {
         AtomicInteger missing = new AtomicInteger( grouped.size() );
 
         for ( Address address : grouped.keySet() ) {
-            // Comunica ao servidor a transaçao
+            // Comunica ao servidor o pedido
+            Logger.debug( "[CLIENT] Get request for %s", grouped.get( address ).toString() );
             controller.getRequest( address, grouped.get( address ) ).thenAccept( map -> {
                 finalMap.putAll( map );
 
                 int m = missing.decrementAndGet();
+
+                Logger.debug( "[CLIENT] Get request received %s (missing %d)", map.toString(), m );
 
                 if ( m == 0 ) {
                     future.complete( finalMap );
@@ -104,7 +109,9 @@ public class BaseClient implements Client {
         return future;
     }
 
-    private CompletableFuture< Integer > createTransaction ( Collection<Integer> participants ) {
+    private CompletableFuture< Long > createTransaction ( Collection<Integer> participants ) {
+        Logger.debug( "[CLIENT] Creating transaction for %s", participants.toString() );
+
         return this.controller.createTransaction( new ArrayList<>( participants ) );
     }
 
@@ -143,11 +150,13 @@ public class BaseClient implements Client {
     @Override
     public CompletableFuture<Void> start() {
         return controller.discoverParticipants()
-                .thenAccept( participants ->
-                        serverAddresses = participants
-                        .stream()
-                        .map(Address::from)
-                        .collect(Collectors.toList())
-                );
+                .thenAccept( participants -> {
+                    serverAddresses = participants
+                            .stream()
+                            .map( Address::from )
+                            .collect( Collectors.toList() );
+
+                    Logger.debug( "[CLIENT] Server addresses are %s", this.serverAddresses.toString() );
+                } );
     }
 }

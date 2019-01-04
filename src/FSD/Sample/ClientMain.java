@@ -19,8 +19,8 @@ public class ClientMain {
         int coordinatorPort = Integer.parseInt( args[ 1 ] );
         int action          = Integer.parseInt( args[ 2 ] );
 
-        Address address            = Address.from( clientPort );
-        Address coordinatorAddress = Address.from( coordinatorPort );
+        Address address            = Address.from( "localhost:" + clientPort );
+        Address coordinatorAddress = Address.from(  "localhost:" + coordinatorPort );
 
         Client           client     = new BaseClient( address, coordinatorAddress );
         ClientController controller = new ClientController( client, address, coordinatorAddress );

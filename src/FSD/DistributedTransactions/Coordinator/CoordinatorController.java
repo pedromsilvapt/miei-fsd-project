@@ -1,5 +1,8 @@
 package FSD.DistributedTransactions.Coordinator;
 
+import FSD.DistributedMap.MapNodeController;
+import FSD.DistributedTransactions.Participant.LogEntry;
+import FSD.DistributedTransactions.Participant.LogEntryType;
 import FSD.DistributedTransactions.TransactionReport;
 import FSD.DistributedTransactions.TransactionRequest;
 import FSD.DistributedTransactions.TransactionState;
@@ -10,6 +13,7 @@ import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -32,9 +36,15 @@ public class CoordinatorController {
         this.address = address;
 
         this.serializer = Serializer.builder()
+                .withTypes( MapNodeController.PutRequest.class )
                 .withTypes( ArrayList.class )
+                .withTypes( TransactionRequest.class )
                 .withTypes( TransactionReport.class )
                 .withTypes( TransactionState.class )
+                .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
+                .withTypes( LogEntryType.class )
+                .withTypes( LogEntry.class )
                 .build();
 
         this.executorService = Executors.newSingleThreadExecutor();
@@ -49,7 +59,11 @@ public class CoordinatorController {
 
         byte[] data = this.serializer.encode( report );
 
+        Logger.debug( "[COORDINATOR] Sending report %s to %s.", report, Arrays.toString( tr.servers ) );
+
         for ( int index : tr.servers ) {
+            Logger.debug( "[COORDINATOR] %s.", this.coordinator.getServer( index ) );
+
             this.channel.sendAsync( this.coordinator.getServer( index ), "update-transaction", data );
         }
     }

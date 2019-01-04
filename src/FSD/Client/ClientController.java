@@ -1,7 +1,12 @@
 package FSD.Client;
 
 import FSD.DistributedMap.MapNodeController.PutRequest;
+import FSD.DistributedTransactions.Participant.LogEntry;
+import FSD.DistributedTransactions.Participant.LogEntryType;
+import FSD.DistributedTransactions.TransactionReport;
 import FSD.DistributedTransactions.TransactionRequest;
+import FSD.DistributedTransactions.TransactionState;
+import FSD.Logger;
 import io.atomix.cluster.messaging.ManagedMessagingService;
 import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
@@ -33,6 +38,14 @@ public class ClientController {
 
         this.serializer = Serializer.builder()
                 .withTypes( PutRequest.class )
+                .withTypes( ArrayList.class )
+                .withTypes( TransactionRequest.class )
+                .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
+                .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
+                .withTypes( LogEntryType.class )
+                .withTypes( LogEntry.class )
                 .build();
 
         this.channel = NettyMessagingService
@@ -50,26 +63,22 @@ public class ClientController {
     }
 
     public CompletableFuture<Map<Long, byte[]>> getRequest(Address server, Collection<Long> values) {
-        return channel.sendAndReceive(server, "put", serializer.encode(values)).thenApply( serializer::decode );
+        return channel.sendAndReceive( server, "get", serializer.encode(values) ).thenApply( serializer::decode );
     }
 
-    public CompletableFuture< Integer > createTransaction ( List<Integer> participants ) {
+    public CompletableFuture< Long > createTransaction ( List<Integer> participants ) {
         TransactionRequest request = new TransactionRequest( participants );
 
         return channel.sendAndReceive(coordinator, "create-transaction", serializer.encode(request)).thenApply( serializer::decode );
     }
 
-
     public CompletableFuture<List<String>> discoverParticipants() {
-        List<String> addresses = new ArrayList<>();
-        CompletableFuture<byte[]> response =
-                channel.sendAndReceive(coordinator, "discover-participants", serializer.encode(addresses));
-        return response.thenApply( bytes -> serializer.decode( bytes ) );
+        return channel.sendAndReceive(coordinator, "discover-participants", new byte[0] ).thenApply( serializer::decode );
     }
 
     public CompletableFuture< Void > start () {
-        return this.client.start()
-                .thenCompose( m -> this.channel.start() )
+        return this.channel.start()
+                .thenCompose( m -> this.client.start() )
                 .thenApply( a -> null);
     }
 }

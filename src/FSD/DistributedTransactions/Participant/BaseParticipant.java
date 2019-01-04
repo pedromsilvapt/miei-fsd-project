@@ -1,6 +1,8 @@
 package FSD.DistributedTransactions.Participant;
 
+import FSD.DistributedMap.MapNodeController;
 import FSD.DistributedTransactions.TransactionReport;
+import FSD.DistributedTransactions.TransactionRequest;
 import FSD.DistributedTransactions.TransactionState;
 import FSD.Logger;
 import io.atomix.storage.journal.SegmentedJournal;
@@ -8,6 +10,7 @@ import io.atomix.storage.journal.SegmentedJournalReader;
 import io.atomix.storage.journal.SegmentedJournalWriter;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -28,11 +31,16 @@ public class BaseParticipant < T > implements Participant< T > {
         this.serializableTypes = types;
 
         this.serializer = Serializer.builder()
-                .withTypes( types )
+                .withTypes( MapNodeController.PutRequest.class )
+                .withTypes( ArrayList.class )
+                .withTypes( TransactionRequest.class )
+                .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
                 .withTypes( TransactionReport.class )
                 .withTypes( TransactionState.class )
                 .withTypes( LogEntryType.class )
                 .withTypes( LogEntry.class )
+                .withTypes( types )
                 .build();
 
         this.transactions = new HashMap<>();

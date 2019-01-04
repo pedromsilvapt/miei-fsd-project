@@ -1,6 +1,8 @@
 package FSD.DistributedTransactions.Participant;
 
+import FSD.DistributedMap.MapNodeController;
 import FSD.DistributedTransactions.TransactionReport;
+import FSD.DistributedTransactions.TransactionRequest;
 import FSD.DistributedTransactions.TransactionState;
 import FSD.Logger;
 import io.atomix.cluster.messaging.ManagedMessagingService;
@@ -8,6 +10,7 @@ import io.atomix.cluster.messaging.impl.NettyMessagingService;
 import io.atomix.utils.net.Address;
 import io.atomix.utils.serializer.Serializer;
 
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,11 +31,16 @@ public class ParticipantController < T > {
         this.participant.setController( this );
 
         this.serializer = Serializer.builder()
-                .withTypes( this.participant.getSerializableTypes() )
+                .withTypes( MapNodeController.PutRequest.class )
+                .withTypes( ArrayList.class )
+                .withTypes( TransactionRequest.class )
+                .withTypes( TransactionReport.class )
+                .withTypes( TransactionState.class )
                 .withTypes( TransactionReport.class )
                 .withTypes( TransactionState.class )
                 .withTypes( LogEntryType.class )
                 .withTypes( LogEntry.class )
+                .withTypes( this.participant.getSerializableTypes() )
                 .build();
 
         this.messagingService = NettyMessagingService
@@ -41,6 +49,12 @@ public class ParticipantController < T > {
                 .build();
 
         this.executorService = Executors.newSingleThreadExecutor();
+
+        this.messagingService.registerHandler( "update-transaction", ( o, m ) -> {
+            TransactionReport report = this.serializer.decode( m );
+
+            this.participant.onCoordinatorUpdate( report.id, report.state );
+        }, this.executorService );
     }
 
     public ParticipantController ( Participant< T > participant, Serializer serializer, ManagedMessagingService messagingService, ExecutorService executorService, Address coordinator ) {
@@ -55,6 +69,12 @@ public class ParticipantController < T > {
         this.messagingService = messagingService;
 
         this.executorService = executorService;
+
+        this.messagingService.registerHandler( "update-transaction", ( o, m ) -> {
+            TransactionReport report = this.serializer.decode( m );
+
+            this.participant.onCoordinatorUpdate( report.id, report.state );
+        }, this.executorService );
     }
 
     public void sendReport ( long id, TransactionState state ) {
@@ -78,12 +98,6 @@ public class ParticipantController < T > {
                     this.participant.tryCommit( transaction.id, null );
                 }
             }
-
-            this.messagingService.registerHandler( "update-transaction", ( o, m ) -> {
-                TransactionReport report = this.serializer.decode( m );
-
-                this.participant.onCoordinatorUpdate( report.id, report.state );
-            }, this.executorService );
 
             return this.messagingService.start();
         } ).thenRun( () -> {} );
